@@ -7,41 +7,37 @@ namespace Cutting
 {
     class Program
     {
-        static void Main(string[] args)
-        {
-            Seed();
-            //cut();
-            Console.Read();
-        }
-
-        private static void Seed()
+        static void Main()
         {
             var material1 = new Product(1);
-            var sourceBatch1 = new Batch(material1);
-            var materialBatch1 = new Batch(material1, 45, sourceBatch1);
-            var sourceBatch2 = new Batch(material1);
-            var materialBatch2 = new Batch(material1, 30, sourceBatch2);
+            var sourceBatch1 = new Batch("plavka1", material1);
+            var materialBatch1 = new Batch("te1", material1, 35, sourceBatch1);
+            var sourceBatch2 = new Batch("plavka2", material1);
+            var materialBatch2 = new Batch("te2", material1, 30, sourceBatch2);
+            List<Batch> materialBatches = new List<Batch>() { materialBatch1, materialBatch2 };
 
             var product = new Product(2, 10, 20, material1);
-            var productBatch1 = new Batch(product, 1);
-            var productBatch2 = new Batch(product, 4);
+            var productBatch1 = new Batch("det1", product, 1);
+            var productBatch2 = new Batch("det2", product, 3);
             var workcenter = new Workcenter();
 
             List<Batch> productBatches = new List<Batch>() { productBatch1, productBatch2 };
-            List<Batch> materialBatches = new List<Batch>() { materialBatch1, materialBatch2 };
+            PrintResult(Calc(productBatches, materialBatches));
+            Console.Read();
+        }
+
+        public static List<Reserve> Calc(List<Batch> productBatches, List<Batch> materialBatches)
+        {
+            List<Reserve> reserves = new List<Reserve>();
             var sourcesDic = materialBatches.ToLookup(x => x.sourceBatch);
             var materialDic = sourcesDic.ToLookup(x => x.Key.product);
-
-
-            List<Reserve> reserves = new List<Reserve>();
-
-            foreach (var productBatch in productBatches)
+            foreach (var productBatch in productBatches.OrderByDescending(b=>b.Required))
             {
-                foreach (var melt in materialDic[productBatch.product.material].OrderBy(b => b.Key.id))
+                foreach (var meltBatches in materialDic[productBatch.product.material].OrderByDescending(m => m.Sum(b=> b.NotReserved)))
                 {
-                    if (CheckMelt(melt, productBatch))
+                    if (CheckMelt(meltBatches, productBatch))
                     {
-                        foreach (var materialBatch in melt.OrderBy(b => b.id))
+                        foreach (var materialBatch in meltBatches.OrderBy(b => b.id))
                         {
                             var reserve = new Reserve(productBatch, materialBatch);
                             reserves.Add(reserve);
@@ -49,14 +45,12 @@ namespace Cutting
                         break;
                     }
                 }
-                //if (productBatch.NotProvided > 0)
-                //    foreach (var materialBatch in materialBatches)
-                //        if (materialBatch.NotReserved >= productBatch.product.len)
-                //        {
-                //            var reserve = new Reserve(productBatch, materialBatch);
-                //            reserves.Add(reserve);
-                //        }
             }
+            return reserves;
+        }
+
+        private static void PrintResult(List<Reserve> reserves)
+        {
             //Console.WriteLine(reserves);
             foreach (var reserve in reserves)
                 Console.WriteLine("productBatch.id={0} materialBatch.id={1} productQuantity={2}", reserve.productBatch.id, reserve.materialBatch.id, reserve.productQuantity);
@@ -76,7 +70,7 @@ namespace Cutting
         }
     }
 
-    internal class Reserve
+    public class Reserve
     {
         public Batch productBatch;
         public Batch materialBatch;
@@ -94,7 +88,7 @@ namespace Cutting
         }
     }
 
-    internal class Workcenter
+    public class Workcenter
     {
         public List<Batch> batches = new List<Batch>();
         public Workcenter()
@@ -103,10 +97,9 @@ namespace Cutting
         }
     }
 
-    internal class Batch
+    public class Batch
     {
-        static int count;
-        public int id;
+        public string id;
         public Product product;
         public readonly int quantity;
         private int reserved;
@@ -134,9 +127,9 @@ namespace Cutting
                 NotProvided = quantity - provided;
             }
         }
-        public Batch(Product product, int quantity = 0, Batch sourceBatch = null)
+        public Batch(string id, Product product, int quantity = 0, Batch sourceBatch = null)
         {
-            id = count++;
+            this.id = id;
             this.product = product;
             this.quantity = quantity;
             Reserved = 0;
@@ -150,7 +143,7 @@ namespace Cutting
         public List<Reserve> Reserves;
     }
 
-    internal class Product
+    public class Product
     {
         readonly int id;
         public int len;
