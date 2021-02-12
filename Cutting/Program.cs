@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 
 namespace Cutting
 {
@@ -10,15 +9,15 @@ namespace Cutting
         static void Main()
         {
             var material1 = new Product("1");
-            var sourceBatch1 = new Batch("plavka1", material1);
-            var materialBatch1 = new Batch("te1", material1, 35, sourceBatch1);
-            var sourceBatch2 = new Batch("plavka2", material1);
-            var materialBatch2 = new Batch("te2", material1, 30, sourceBatch2);
+            var sourceBatch1 = new Batch("plavka1", material1, 80);
+            var materialBatch1 = new Batch("te1", material1, 80, 35, DateTime.Today, sourceBatch1);
+            var sourceBatch2 = new Batch("plavka2", material1, 80);
+            var materialBatch2 = new Batch("te2", material1, 80, 30, DateTime.Today, sourceBatch2);
             List<Batch> materialBatches = new List<Batch>() { materialBatch1, materialBatch2 };
 
             var product = new Product("2", 10, 20, material1.id);
-            var productBatch1 = new Batch("det1", product, 1);
-            var productBatch2 = new Batch("det2", product, 3);
+            var productBatch1 = new Batch("det1", product, 80, 1);
+            var productBatch2 = new Batch("det2", product, 80, 3);
 
             IEnumerable<Batch> productBatches = new Batch[] { productBatch1, productBatch2 };
             PrintResult(Calc(productBatches, materialBatches));
@@ -30,13 +29,13 @@ namespace Cutting
             List<Reserve> reserves = new List<Reserve>();
             var sourcesDic = materialBatches.ToLookup(x => x.sourceBatch);
             var materialDic = sourcesDic.ToLookup(x => x.Key.product.id);
-            foreach (var productBatch in productBatches.OrderByDescending(b => b.Required))
+            foreach (var productBatch in productBatches.OrderBy(b=>b.deadline).ThenByDescending(b => b.Required))
             {
-                foreach (var meltBatches in materialDic[productBatch.product.material].OrderByDescending(m => m.Sum(b => b.NotReserved)))
+                foreach (var meltBatches in materialDic[productBatch.product.material].OrderBy(m => m.Sum(b => b.NotReserved)))
                 {
                     if (CheckMelt(meltBatches, productBatch))
                     {
-                        foreach (var materialBatch in meltBatches.OrderBy(b => b.id))
+                        foreach (var materialBatch in meltBatches.OrderBy(b => b.NotReserved))
                             if (materialBatch.NotReserved >= productBatch.product.len && productBatch.NotProvided >0)
                             {
                                 var reserve = new Reserve(productBatch, materialBatch);
@@ -102,9 +101,13 @@ namespace Cutting
         public string id;
         public Product product;
         public readonly int quantity;
+        public DateTime deadline = DateTime.MinValue;
+        public int place_id;
         private int reserved;
         private int provided;
         public Batch sourceBatch;
+        public int NotReserved { get; private set; }
+        public int NotProvided { get; private set; }
         public int Required
         {
             get => product.len * quantity;
@@ -127,7 +130,7 @@ namespace Cutting
                 NotProvided = quantity - provided;
             }
         }
-        public Batch(string id, Product product, int quantity = 0, Batch sourceBatch = null)
+        public Batch(string id, Product product, int place_id, int quantity = 0, DateTime? deadline = null, Batch sourceBatch = null)
         {
             this.id = id;
             this.product = product;
@@ -137,10 +140,9 @@ namespace Cutting
             NotReserved = quantity;
             NotProvided = quantity;
             this.sourceBatch = sourceBatch;
+            this.deadline = deadline ?? DateTime.MinValue;
+            this.place_id = place_id;
         }
-
-        public int NotReserved { get; private set; }
-        public int NotProvided { get; private set; }
 
         public List<Reserve> Reserves;
     }
