@@ -10,9 +10,9 @@ namespace Cutting
         {
             var material1 = new Product("1");
             var sourceBatch1 = new Batch("plavka1", material1, 80);
-            var materialBatch1 = new Batch("te1", material1, 80, 35, DateTime.Today, sourceBatch1);
+            var materialBatch1 = new Batch("te1", material1, 80, 35, 0, DateTime.Today, sourceBatch1);
             var sourceBatch2 = new Batch("plavka2", material1, 80);
-            var materialBatch2 = new Batch("te2", material1, 80, 30, DateTime.Today, sourceBatch2);
+            var materialBatch2 = new Batch("te2", material1, 80, 30, 0, DateTime.Today, sourceBatch2);
             List<Batch> materialBatches = new List<Batch>() { materialBatch1, materialBatch2 };
 
             var product = new Product("2", 10, 20, material1.id);
@@ -101,6 +101,7 @@ namespace Cutting
         public string id;
         public Product product;
         public readonly int quantity;
+        public readonly int kg;
         public DateTime deadline = DateTime.MinValue;
         public int place_id;
         private int reserved;
@@ -130,11 +131,12 @@ namespace Cutting
                 NotProvided = quantity - provided;
             }
         }
-        public Batch(string id, Product product, int place_id, int quantity = 0, DateTime? deadline = null, Batch sourceBatch = null)
+        public Batch(string id, Product product, int place_id, int quantity = 0, int kg = 0, DateTime? deadline = null, Batch sourceBatch = null)
         {
             this.id = id;
             this.product = product;
             this.quantity = quantity;
+            this.kg = kg;
             Reserved = 0;
             Provided = 0;
             NotReserved = quantity;
