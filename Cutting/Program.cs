@@ -9,10 +9,10 @@ namespace Cutting
         static void Main()
         {
             var material1 = new Product("1");
-            var sourceBatch1 = new Batch("plavka1", material1, 80);
-            var materialBatch1 = new Batch("te1", material1, 80, 35, 0, DateTime.Today, sourceBatch1);
-            var sourceBatch2 = new Batch("plavka2", material1, 80);
-            var materialBatch2 = new Batch("te2", material1, 80, 30, 0, DateTime.Today, sourceBatch2);
+            //var sourceBatch1 = new Batch("plavka1", material1, 80);
+            var materialBatch1 = new Batch("te1", material1, 80, 10, 0, DateTime.Today, "plavka1");
+            //var sourceBatch2 = new Batch("plavka2", material1, 80);
+            var materialBatch2 = new Batch("te2", material1, 80, 2, 0, DateTime.Today, "plavka1");
             List<Batch> materialBatches = new List<Batch>() { materialBatch1, materialBatch2 };
 
             var product = new Product("2", 10, 20, material1.id);
@@ -27,24 +27,21 @@ namespace Cutting
         public static Reserve[] Calc(IEnumerable<Batch> productBatches, IEnumerable<Batch> materialBatches)
         {
             List<Reserve> reserves = new List<Reserve>();
-            var sourcesDic = materialBatches.ToLookup(x => x.sourceBatch);
-            var materialDic = sourcesDic.ToLookup(x => x.Key.product.id);
-            foreach (var productBatch in productBatches.OrderBy(b=>b.deadline).ThenByDescending(b => b.Required))
-            {
-                foreach (var meltBatches in materialDic[productBatch.product.material].OrderBy(m => m.Sum(b => b.NotReserved)))
-                {
-                    if (CheckMelt(meltBatches, productBatch))
-                    {
-                        foreach (var materialBatch in meltBatches.OrderBy(b => b.NotReserved))
-                            if (materialBatch.NotReserved >= productBatch.product.len && productBatch.NotProvided >0)
-                            {
-                                var reserve = new Reserve(productBatch, materialBatch);
-                                reserves.Add(reserve);
-                            }
-                        break;
-                    }
-                }
-            }
+            var materialBatchesByMaterial = materialBatches.GroupBy(b => b.product.id)
+                .ToLookup(x => x.Key, x => x.ToLookup(b => b.melt));
+            foreach (var productBatch in productBatches.OrderBy(b => b.deadline).ThenByDescending(b => b.RequiredLen))
+                foreach (var materialBatchesForProductBatch in materialBatchesByMaterial[productBatch.product.material])
+                    foreach (var meltBatches in materialBatchesForProductBatch.OrderBy(m => m.Sum(b => b.NotReserved)).ToArray())
+                        if (CheckMelt(meltBatches, productBatch.quantity, productBatch.product.len))
+                        {
+                            foreach (var materialBatch in meltBatches.OrderBy(b => b.NotReserved).ToArray())
+                                if (materialBatch.NotReserved >= productBatch.product.len && productBatch.NotProvided > 0)
+                                {
+                                    var reserve = new Reserve(productBatch, materialBatch);
+                                    reserves.Add(reserve);
+                                }
+                            break;
+                        }
             return reserves.ToArray();
         }
 
@@ -55,14 +52,13 @@ namespace Cutting
                 Console.WriteLine("productBatch.id={0} materialBatch.id={1} productQuantity={2}", reserve.productBatch.id, reserve.materialBatch.id, reserve.productQuantity);
         }
 
-        private static bool CheckMelt(IEnumerable<Batch> materialBatches, Batch productBatch)
+        public static bool CheckMelt(IEnumerable<Batch> materialBatches, int required, int len)
         {
-            int req = productBatch.quantity;
-            foreach (var batch in materialBatches)
+            foreach (var materialBatch in materialBatches)
             {
-                int qnt = batch.NotReserved / productBatch.product.len;
-                req -= qnt;
-                if (req <= 0)
+                int qnt = materialBatch.NotReserved / len;
+                required -= qnt;
+                if (required <= 0)
                     return true;
             }
             return false;
@@ -84,6 +80,8 @@ namespace Cutting
 
             materialBatch.Reserved += productQuantity * productBatch.product.len;
             productBatch.Provided += productQuantity;
+            if (productBatch.deadline < materialBatch.deadline)
+                materialBatch.deadline = productBatch.deadline;
         }
     }
 
@@ -102,14 +100,15 @@ namespace Cutting
         public Product product;
         public readonly int quantity;
         public readonly int kg;
-        public DateTime deadline = DateTime.MinValue;
+        public DateTime deadline = DateTime.MaxValue;
         public int place_id;
+        public string location_id;
         private int reserved;
         private int provided;
-        public Batch sourceBatch;
+        public string melt;
         public int NotReserved { get; private set; }
         public int NotProvided { get; private set; }
-        public int Required
+        public int RequiredLen
         {
             get => product.len * quantity;
         }
@@ -131,7 +130,7 @@ namespace Cutting
                 NotProvided = quantity - provided;
             }
         }
-        public Batch(string id, Product product, int place_id, int quantity = 0, int kg = 0, DateTime? deadline = null, Batch sourceBatch = null)
+        public Batch(string id, Product product, int place_id, int quantity = 0, int kg = 0, DateTime? deadline = null, string melt = null, string location_id = null)
         {
             this.id = id;
             this.product = product;
@@ -141,9 +140,10 @@ namespace Cutting
             Provided = 0;
             NotReserved = quantity;
             NotProvided = quantity;
-            this.sourceBatch = sourceBatch;
-            this.deadline = deadline ?? DateTime.MinValue;
+            this.melt = melt;
+            this.deadline = deadline ?? DateTime.MaxValue;
             this.place_id = place_id;
+            this.location_id = location_id;
         }
 
         public List<Reserve> Reserves;
