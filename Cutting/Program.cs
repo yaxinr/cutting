@@ -18,14 +18,14 @@ namespace Cutting
             List<Batch> materialBatches = new List<Batch>() { materialBatch1, materialBatch2 };
 
             var product = new Product("det2", "path1", 10, 20, material1.id);
-            var productBatch1 = new Batch("batch1", product, 80, 1);
-            var productBatch2 = new Batch("batch2", product, 80, 3);
+            var productBatchSample = new Batch("batchSample", product, 80, 2);
+            var productBatch2 = new Batch("batch2", product, 80, 3) { sampleBatch = productBatchSample };
             var product3 = new Product("det3", "path3", 10, 20, "2");
             var productBatch3 = new Batch("batch3", product3, 80, 3);
 
-            IEnumerable<Batch> productBatches = new Batch[] { productBatch1, productBatch2, productBatch3 };
+            IEnumerable<Batch> productBatches = new Batch[] { productBatchSample, productBatch2, productBatch3 };
             Alt[] alts = new Alt[] {
-                new Alt { originalMatarialId = "2", alterMatarialId = "1", productId = "det3" }            ,
+                new Alt { originalMatarialId = "2", alterMatarialId = "1", productId = "det3" },
                 new Alt { originalMatarialId = "2", alterMatarialId = "1", productId = string.Empty },
             };
             PrintResult(CalcWithAlt(productBatches, materialBatches, alts));
@@ -50,7 +50,7 @@ namespace Cutting
             foreach (var productBatch in productBatches.OrderBy(b => b.deadline).ThenByDescending(b => b.RequiredLen))
                 foreach (var materialBatchesForProductBatch in materialBatchesByMaterial[productBatch.product.material])
                     foreach (var meltBatches in materialBatchesForProductBatch.OrderBy(m => m.Sum(b => b.NotReserved)).ToArray())
-                        if (CheckMelt(meltBatches, productBatch.quantity, productBatch.product.len))
+                        if (CheckMelt(meltBatches, productBatch.quantity, productBatch.product.len, productBatch.sampleBatch))
                         {
                             foreach (var materialBatch in meltBatches.OrderBy(b => b.NotReserved).ToArray())
                                 if (materialBatch.NotReserved >= productBatch.product.len && productBatch.NotProvided > 0)
@@ -85,28 +85,27 @@ namespace Cutting
 
         public static Reserve[] CalcWithAlt(IEnumerable<Batch> productBatches, IEnumerable<Batch> materialBatches, Alt[] alts, Reserve[] reserveList = null)
         {
+            var productBatchesArr = productBatches.Except(productBatches.Where(b => b.sampleBatch != null).Select(x => x.sampleBatch)).ToArray();
             string[] altMaterialIds = alts.Select(x => x.alterMatarialId).Distinct().ToArray();
-            var materialMinLen = productBatches.GroupBy(b => b.product.material).ToDictionary(m => m.Key, m => m.Min(b => b.product.len));
+            var materialMinLen = productBatchesArr.GroupBy(b => b.product.material).ToDictionary(m => m.Key, m => m.Min(b => b.product.len));
             if (reserveList == null) reserveList = new Reserve[] { };
             ConcurrentBag<Reserve> reservesBag = new ConcurrentBag<Reserve>(reserveList);
             var materials = materialBatches.ToLookup(x => x.product.id);
 
-            var productMaterialIds = productBatches.ToLookup(pb => pb.product.material);
-            Parallel.ForEach(materials.Select(x => x.Key).Except(altMaterialIds), (materialId) =>
+            var productMaterialIds = productBatchesArr.ToLookup(pb => pb.product.material);
+            Parallel.ForEach(materials.Select(x => x.Key).Except(altMaterialIds), materialId =>
             {
                 var prodBatches = productMaterialIds[materialId];
                 foreach (var productBatch in prodBatches.OrderBy(b => b.deadline).ThenByDescending(b => b.RequiredLen))
                 {
-                    {
-                        var material = materials[productBatch.product.material].Where(b => b.NotReserved > productBatch.product.len).ToArray();
-                        ReserveMaterial(reservesBag, productBatch, material, materialMinLen);
-                    }
+                    var material = materials[productBatch.product.material].Where(b => b.NotReserved > productBatch.product.len).ToArray();
+                    ReserveMaterial(reservesBag, productBatch, material, materialMinLen);
                 }
             });
 
             var altByOriginalAndProduct = alts.ToLookup(a => a.originalMatarialId + a.productId, a => a.alterMatarialId);
             {
-                var prodBatches = productBatches.Where(pb => pb.NotProvided > 0).ToArray();
+                var prodBatches = productBatchesArr.Where(pb => pb.NotProvided > 0).ToArray();
                 foreach (var productBatch in prodBatches.OrderBy(b => b.deadline).ThenByDescending(b => b.RequiredLen))
                 {
                     {
@@ -145,16 +144,15 @@ namespace Cutting
             }
 
             var productMaterialIds = productBatches.ToLookup(pb => pb.product.material);
-            Parallel.ForEach(materials.Select(x => x.Key).Except(altMaterialIds), (materialId) =>
+            Parallel.ForEach(materials.Select(x => x.Key).Except(altMaterialIds), materialId =>
             {
                 var prodBatches = productMaterialIds[materialId];
                 foreach (var productBatch in prodBatches.OrderBy(b => b.deadline).ThenByDescending(b => b.RequiredLen))
-                {
+                    if (productBatch.NotProvided > 0)
                     {
                         var material = materials[productBatch.product.material].Where(b => b.NotReserved > productBatch.product.len).ToArray();
                         ReserveMaterial(reservesBag, productBatch, material, materialMinLen);
                     }
-                }
             });
 
             var altByOriginalAndProduct = alts.ToLookup(a => a.originalMatarialId + a.productId, a => a.alterMatarialId);
@@ -184,11 +182,12 @@ namespace Cutting
             var availabilities = material.ToLookup(m => m.availability).ToArray();
             List<Batch> availBatches = new List<Batch>();
             foreach (var availability in availabilities.OrderBy(x => x.Key))
-            {
-                availBatches.AddRange(availability);
-                ReserveCreate(reserves, productBatch, availBatches.ToArray(), materialMinLen);
-                if (productBatch.NotProvided <= 0) break;
-            }
+                if (productBatch.NotProvided > 0)
+                {
+                    availBatches.AddRange(availability);
+                    ReserveCreate(reserves, productBatch, availBatches.ToArray(), materialMinLen);
+                }
+                else break;
         }
 
         private static void ReserveCreate(ConcurrentBag<Reserve> reserves, Batch productBatch, Batch[] matBatches, Dictionary<string, int> materialMinLen)
@@ -198,37 +197,35 @@ namespace Cutting
                 .OrderByDescending(m => CountMelt(m, productBatch.quantity, productBatch.product.len, MinLen(materialMinLen, m.First().product.id)))
                 .ThenBy(m => m.Sum(x => x.NotReserved))
                 .ToArray())
-                if (CheckMelt(meltBatches, productBatch.quantity, productBatch.product.len))
+                if (CheckMelt(meltBatches, productBatch.quantity, productBatch.product.len, productBatch.sampleBatch))
                 {
                     int minLen = MinLen(materialMinLen, meltBatches.First().product.id);
-                    foreach (var materialBatch in meltBatches
+                    ProdBatchReserve(reserves, productBatch,
+                        meltBatches
                         .Where(b => b.NotReserved <= (productBatch.NotProvided + minLen) && b.NotReserved % productBatch.product.len < minLen)
-                        .OrderByDescending(b => b.NotReserved).ToArray())
-                    {
-                        if (materialBatch.NotReserved >= productBatch.product.len && productBatch.NotProvided > 0)
-                        {
-                            var reserve = new Reserve(productBatch, materialBatch);
-                            reserves.Add(reserve);
-                            if (productBatch.NotProvided <= 0) break;
-                        }
-                    }
+                        .OrderByDescending(b => b.NotReserved).ToArray());
                     if (productBatch.NotProvided <= 0) break;
-                    foreach (var materialBatch in meltBatches.OrderBy(b => b.NotReserved).ToArray())
-                        if (materialBatch.NotReserved >= productBatch.product.len)
-                        {
-                            var reserve = new Reserve(productBatch, materialBatch);
-                            reserves.Add(reserve);
-                            if (productBatch.NotProvided <= 0) break;
-                        }
+                    ProdBatchReserve(reserves, productBatch, meltBatches.OrderBy(b => b.NotReserved).ToArray());
+                    ProdBatchReserve(reserves, productBatch.sampleBatch, meltBatches.OrderBy(b => b.NotReserved).ToArray());
                     break;
                 }
         }
 
+        private static void ProdBatchReserve(ConcurrentBag<Reserve> reserves, Batch productBatch, Batch[] notReserveredMeltBatches)
+        {
+            if (productBatch != null)
+                foreach (var materialBatch in notReserveredMeltBatches)
+                    if (materialBatch.NotReserved >= productBatch.product.len && productBatch.NotProvided > 0)
+                    {
+                        var reserve = new Reserve(productBatch, materialBatch);
+                        reserves.Add(reserve);
+                        if (productBatch.NotProvided <= 0) break;
+                    }
+        }
+
         private static int MinLen(Dictionary<string, int> materialMinLen, string material)
         {
-            int minLen = 10;
-            materialMinLen.TryGetValue(material, out minLen);
-            return minLen;
+            return materialMinLen.TryGetValue(material, out int minLen) ? minLen : 10;
         }
 
         //public static Reserve[] AltReserve(Batch[] productBatches, IEnumerable<Batch> materialBatches, Alt[] alts)
@@ -265,14 +262,33 @@ namespace Cutting
                 Console.WriteLine("productBatch.id={0} materialBatch.id={1} productQuantity={2}", reserve.productBatch.id, reserve.materialBatch.id, reserve.productQuantity);
         }
 
-        public static bool CheckMelt(IEnumerable<Batch> materialBatches, int required, int len)
+        public static bool CheckMelt(IEnumerable<Batch> materialBatches, int required, int len, Batch sampleBatch)
         {
-            foreach (var materialBatch in materialBatches)
+            var notReservedArr = materialBatches.Select(x => x.NotReserved).ToArray();
+            for (int i = 0; i < notReservedArr.Length; i++)
+            //foreach (var notReserved in notReservedArr)
             {
-                int qnt = materialBatch.NotReserved / len;
+
+                int qnt = notReservedArr[i] / len;
+                notReservedArr[i] -= qnt * len;
                 required -= qnt;
                 if (required <= 0)
-                    return true;
+                {
+                    if (sampleBatch == null)
+                        return true;
+                    else
+                    {
+                        int sampleRequired = sampleBatch.quantity;
+                        foreach (var notReserved in notReservedArr)
+                        {
+                            int sqnt = notReserved / len;
+                            sampleRequired -= sqnt;
+                            if (sampleRequired <= 0)
+                                return true;
+                        }
+                        return false;
+                    }
+                }
             }
             return false;
         }
@@ -352,6 +368,7 @@ namespace Cutting
         public int NotProvided { get; private set; }
         public int Seconds => product.seconds * quantity;
         public int RequiredLen => product.len * quantity;
+        public Batch sampleBatch;
         public int Reserved
         {
             get => reserved;
