@@ -25,8 +25,8 @@ namespace Cutting
 
             IEnumerable<Batch> productBatches = new Batch[] { productBatchSample, productBatch2, productBatch3 };
             Alt[] alts = new Alt[] {
-                new Alt { originalMatarialId = "2", alterMatarialId = "1", productId = "det3" },
-                new Alt { originalMatarialId = "2", alterMatarialId = "1", productId = string.Empty },
+                new Alt { originalMatarialId = "2", altMaterialId = "1", productId = "det3" },
+                new Alt { originalMatarialId = "2", altMaterialId = "1", productId = string.Empty },
             };
             PrintResult(CalcWithAlt(productBatches, materialBatches, alts));
             //var altres = AltReserve(productBatches.ToArray(), materialBatches, alts);
@@ -131,7 +131,7 @@ namespace Cutting
 
         public static Reserve[] CalcWithAlt(IEnumerable<Batch> productBatches, IEnumerable<Batch> materialBatches, Alt[] alts, Direction[] directions = null, Reserve[] reserveList = null)
         {
-            string[] altMaterialIds = alts.Select(x => x.alterMatarialId).Distinct().ToArray();
+            string[] altMaterialIds = alts.Select(x => x.altMaterialId).Distinct().ToArray();
             var materialMinLen = productBatches.GroupBy(b => b.product.material).ToDictionary(m => m.Key, m => m.Min(b => b.product.len));
             if (reserveList == null) reserveList = new Reserve[] { };
             ConcurrentBag<Reserve> reservesBag = new ConcurrentBag<Reserve>(reserveList);
@@ -163,7 +163,7 @@ namespace Cutting
                     }
             });
 
-            var altByOriginalAndProduct = alts.ToLookup(a => a.originalMatarialId + a.productId, a => a.alterMatarialId);
+            var altByOriginalAndProduct = alts.ToLookup(a => a.originalMatarialId + a.productId, a => a.altMaterialId);
             {
                 var prodBatches = productBatches.Where(pb => pb.NotProvided > 0).ToArray();
                 foreach (var productBatch in prodBatches.OrderBy(b => b.deadline)
@@ -275,30 +275,21 @@ namespace Cutting
         public static bool CheckMelt(IEnumerable<Batch> materialBatches, int required, int len, Batch sampleBatch)
         {
             var notReservedArr = materialBatches.Select(x => x.NotReserved).ToArray();
-            for (int i = 0; i < notReservedArr.Length; i++)
-            //foreach (var notReserved in notReservedArr)
-            {
+            int sampleRequired = sampleBatch == null ? 0 : sampleBatch.quantity;
+            if (!CheckArr(notReservedArr, required, len)) return false;
+            if (sampleBatch != null && !CheckArr(notReservedArr, sampleBatch.quantity, sampleBatch.product.len)) return false;
+            return true;
+        }
 
+        public static bool CheckArr(int[] notReservedArr, int required, int len)
+        {
+            for (int i = 0; i < notReservedArr.Length; i++)
+            {
                 int qnt = notReservedArr[i] / len;
                 notReservedArr[i] -= qnt * len;
                 required -= qnt;
                 if (required <= 0)
-                {
-                    if (sampleBatch == null)
-                        return true;
-                    else
-                    {
-                        int sampleRequired = sampleBatch.quantity;
-                        foreach (var notReserved in notReservedArr)
-                        {
-                            int sqnt = notReserved / len;
-                            sampleRequired -= sqnt;
-                            if (sampleRequired <= 0)
-                                return true;
-                        }
-                        return false;
-                    }
-                }
+                    return true;
             }
             return false;
         }
@@ -322,7 +313,7 @@ namespace Cutting
     public class Alt
     {
         public string originalMatarialId;
-        public string alterMatarialId;
+        public string altMaterialId;
         public string productId;
     }
 
