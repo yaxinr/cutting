@@ -12,18 +12,18 @@ namespace Cutting
         {
             var material1 = new Product("1");
             //var sourceBatch1 = new Batch("plavka1", material1, 80);
-            var materialBatch1 = new Batch("te1", material1, 80, 100, 0, DateTime.Today, "plavka1");
+            var materialBatch1 = new Batch("te1", material1, 80, 105, 0, DateTime.Today, "plavka1");
             //var sourceBatch2 = new Batch("plavka2", material1, 80);
-            var materialBatch2 = new Batch("te2", material1, 80, 20, 0, DateTime.Today, "plavka1");
+            var materialBatch2 = new Batch("te2", material1, 80, 35, 0, DateTime.Today, "plavka1");
             List<Batch> materialBatches = new List<Batch>() { materialBatch1, materialBatch2 };
 
-            var product = new Product("det2", "path1", 10, 20, material1.id);
-            var productBatchSample = new Batch("batchSample", product, 80, 2);
+            var product = new Product("det2", "path1", 20, 1, material1.id);
+            var productBatchSample = new Batch("batchSample", product, 80, 5);
             var productBatch2 = new Batch("batch2", product, 80, 3) { sampleBatch = productBatchSample };
             var product3 = new Product("det3", "path3", 10, 20, "2");
             var productBatch3 = new Batch("batch3", product3, 80, 3);
 
-            IEnumerable<Batch> productBatches = new Batch[] { productBatchSample, productBatch2, productBatch3 };
+            IEnumerable<Batch> productBatches = new Batch[] { productBatchSample };
             Alt[] alts = new Alt[] {
                 new Alt { originalMatarialId = "2", altMaterialId = "1", productId = "det3" },
                 new Alt { originalMatarialId = "2", altMaterialId = "1", productId = string.Empty },
@@ -140,14 +140,12 @@ namespace Cutting
 
             if (directions != null)
                 foreach (var direction in directions)
-                {
                     foreach (var productBatch in productBatches.Where(x => x.product.path.ToUpper().StartsWith(direction.pathTemplate.ToUpper()))
                         .OrderBy(b => b.deadline).ThenByDescending(b => b.RequiredLen))
                     {
                         var material = materials[direction.materialId].Where(b => b.NotReserved > productBatch.product.len).ToArray();
                         ReserveMaterial(reservesBag, productBatch, material, materialMinLen);
                     }
-                }
 
             var productMaterialIds = productBatches.ToLookup(pb => pb.product.material);
             Parallel.ForEach(materials.Select(x => x.Key).Except(altMaterialIds), materialId =>
@@ -203,22 +201,40 @@ namespace Cutting
         private static void ReserveCreate(ConcurrentBag<Reserve> reserves, Batch productBatch, Batch[] matBatches, Dictionary<string, int> materialMinLen, ILookup<string, Batch> meltsLookup)
         {
             var melts = matBatches.ToLookup(x => x.melt).ToArray();
+            int batchOrder(Batch b) => BatchWaste(b);
             foreach (var meltBatches in melts
-                .OrderByDescending(m => CountNoWasteMelt(m, productBatch.quantity, productBatch.product.len, MinLen(materialMinLen, m.First().product.id)))
-                .ThenBy(m => meltsLookup == null ? 0 : meltsLookup[m.Key].Sum(x => x.NotReserved))
-                .ToArray())
-                if (CheckMelt(meltBatches, productBatch.quantity, productBatch.product.len, productBatch.sampleBatch))
+                .Where(meltBtcs => CheckMelt(meltBtcs, productBatch.quantity, productBatch.product.len, productBatch.sampleBatch))
+                .OrderBy(m => WasteSum(m.ToArray(), productBatch.quantity, productBatch.product.len))
+                )
+            {
+                int minLen = MinLen(materialMinLen, meltBatches.First().product.id);
+                var orderedByWaste = meltBatches.OrderBy(batchOrder);
+                ProdBatchReserve(reserves, productBatch, orderedByWaste.ToArray());
+                ProdBatchReserve(reserves, productBatch.sampleBatch, meltBatches.OrderBy(b => b.NotReserved).ToArray());
+                break;
+            }
+
+            int WasteSum(Batch[] m, int required, int len)
+            {
+                int[] notReservedArr = m
+                    .OrderBy(batchOrder)
+                    .Select(b => b.NotReserved).ToArray();
+
+                for (int i = 0; i < notReservedArr.Length; i++)
                 {
-                    int minLen = MinLen(materialMinLen, meltBatches.First().product.id);
-                    ProdBatchReserve(reserves, productBatch,
-                        meltBatches
-                        .Where(b => b.NotReserved <= (productBatch.NotProvided + minLen) && b.NotReserved % productBatch.product.len < minLen)
-                        .OrderByDescending(b => b.NotReserved).ToArray());
-                    if (productBatch.NotProvided <= 0) break;
-                    ProdBatchReserve(reserves, productBatch, meltBatches.OrderBy(b => b.NotReserved).ToArray());
-                    ProdBatchReserve(reserves, productBatch.sampleBatch, meltBatches.OrderBy(b => b.NotReserved).ToArray());
-                    break;
+                    int qnt = notReservedArr[i] / len;
+                    notReservedArr[i] -= qnt * len;
+                    required -= qnt;
+                    if (required <= 0)
+                        return notReservedArr.Sum();
                 }
+                return int.MaxValue;
+            }
+
+            int BatchWaste(Batch b)
+            {
+                return b.NotReserved >= productBatch.NotProvidedLen ? b.NotReserved - productBatch.NotProvidedLen : b.NotReserved % productBatch.product.len;
+            }
         }
 
         private static void ProdBatchReserve(ConcurrentBag<Reserve> reserves, Batch productBatch, Batch[] notReserveredMeltBatches)
@@ -371,6 +387,7 @@ namespace Cutting
         public int NotProvided { get; private set; }
         public int Seconds => product.seconds * product.pieces * quantity;
         public int RequiredLen => product.len * quantity;
+        public int NotProvidedLen => product.len * NotProvided;
         public Batch sampleBatch;
         public int Reserved
         {
