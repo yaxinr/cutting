@@ -181,14 +181,14 @@ namespace Cutting
 
             bool gteProductLen(Batch b, Batch productBatch) => b.NotReserved > productBatch.product.len || b.NotReserved == productBatch.product.billet_len;
             if (directions != null)
-                foreach (var direction in directions)
-                    foreach (var productBatch in productBatches.Where(x => x.product.path.ToUpper().StartsWith(direction.pathTemplate.ToUpper()))
-                        .OrderBy(b => b.deadline).ThenByDescending(b => b.RequiredLen))
+            {
+                foreach (var productBatch in productBatches.OrderBy(b => b.deadline).ThenByDescending(b => b.RequiredLen))
+                    foreach (var direction in directions.Where(direction => productBatch.product.path.ToUpper().StartsWith(direction.pathTemplate.ToUpper())))
                     {
                         var material = materials[direction.materialId].Where(b => gteProductLen(b, productBatch));
                         ReserveMaterial(reservesBag, productBatch, material, materialMinLen);
                     }
-
+            }
             Parallel.Invoke(
                 () =>
                 {
