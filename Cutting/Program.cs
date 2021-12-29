@@ -232,6 +232,20 @@ namespace Cutting
                     }
                 }
             );
+            int sumQnt(IEnumerable<Batch> batches, int len) => batches.Sum(b => b.NotReserved / len);
+            var deficitBatches = productBatches.Where(pb => pb.auto_start == 1 && pb.check_melt && pb.NotProvided > 0)
+                .OrderBy(b => b.deadline).ThenByDescending(b => b.RequiredLen);
+            foreach (var productBatch in deficitBatches)
+            {
+                var productMaterialBatches = materials[productBatch.product.material].Where(b => gteProductLen(b, productBatch));
+                foreach (var melt in productMaterialBatches.GroupBy(mb => mb.melt).OrderByDescending(melt => sumQnt(melt, productBatch.product.len)))
+                {
+                    var meltBatches = melt.ToArray();
+                    productBatch.quantity = sumQnt(meltBatches, productBatch.product.len);
+                    ReserveMaterial(reservesBag, productBatch, meltBatches, materialMinLen);
+                    break;
+                }
+            }
             return reservesBag.ToArray();
         }
 
@@ -285,9 +299,10 @@ namespace Cutting
 
             int BatchWaste(int free)
             {
-                return free >= productBatch.NotProvidedLen
-                    ? free - productBatch.NotProvidedLen
-                    : free - Math.Min(productBatch.NotProvided, free / productBatch.product.len) * productBatch.product.len;
+                return free
+                    - (free >= productBatch.NotProvidedLen
+                    ? productBatch.NotProvidedLen
+                    : Math.Min(productBatch.NotProvided, free / productBatch.product.len) * productBatch.product.len);
             }
         }
 
@@ -367,6 +382,8 @@ namespace Cutting
                 .Where(b => b.NotReserved <= (required + minLen) && b.NotReserved % len < minLen)
                 .Count();
         }
+
+
     }
 
     public class Alt
@@ -413,7 +430,7 @@ namespace Cutting
         public int batchId;
         public string batchUid;
         public Product product;
-        public readonly int quantity;
+        public int quantity;
         public readonly int kg;
         public DateTime deadline = DateTime.MaxValue;
         public DateTime created_at = DateTime.MinValue;
