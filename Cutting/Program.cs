@@ -145,21 +145,59 @@ namespace CuttingV2
                     }
                 }
             );
-            int sumQnt(IEnumerable<Feedstock> batches, int len) => batches.Sum(b => b.NotReserved / len);
-            var deficitBatches = productBatches.Where(pb => pb.auto_start == 1 && pb.check_melt && pb.NotProvided > 0)
-                .OrderBy(b => b.deadline).ThenByDescending(b => b.RequiredLen);
-            foreach (var productBatch in deficitBatches)
+            int sumQnt(IEnumerable<Feedstock> feedstocks, int len) => feedstocks.Sum(b => b.NotReserved / len);
+            // reduce check melt
             {
-                var productMaterialBatches = materials[productBatch.product.material].Where(b => gteProductLen(b, productBatch));
-                foreach (var melt in productMaterialBatches.GroupBy(mb => mb.melt).OrderByDescending(melt => sumQnt(melt, productBatch.product.len)))
+                var deficitBatches = productBatches.Where(pb => pb.auto_start == 1 && pb.check_melt && pb.NotProvided > 0)
+                    .OrderBy(b => b.deadline).ThenByDescending(b => b.RequiredLen);
+                foreach (var productBatch in deficitBatches)
                 {
-                    var meltBatches = melt.ToArray();
-                    productBatch.quantity = sumQnt(meltBatches, productBatch.product.len);
-                    ReserveMaterial(reservesBag, productBatch, meltBatches, materialMinLen);
-                    break;
+                    var productMaterialBatches = materials[productBatch.product.material].Where(b => gteProductLen(b, productBatch));
+                    foreach (var melt in productMaterialBatches.GroupBy(mb => mb.melt).OrderByDescending(melt => sumQnt(melt, productBatch.product.len)))
+                    {
+                        var meltBatches = melt.ToArray();
+                        productBatch.quantity = sumQnt(meltBatches, productBatch.product.len);
+                        ReserveMaterial(reservesBag, productBatch, meltBatches, materialMinLen);
+                        break;
+                    }
+                }
+            }
+            // reduce product batch check melt
+            {
+                var deficitBatches = productBatches.Where(pb => pb.auto_start == 1 && pb.check_melt && pb.NotProvided > 0)
+                    .OrderBy(b => b.deadline).ThenByDescending(b => b.RequiredLen);
+                foreach (var productBatch in deficitBatches)
+                {
+                    var productMaterialBatches = materials[productBatch.product.material].Where(b => gteProductLen(b, productBatch));
+                    foreach (var melt in productMaterialBatches.GroupBy(mb => mb.melt).OrderByDescending(melt => sumQnt(melt, productBatch.product.len)))
+                    {
+                        ReduceProductBatchQuantity(melt, productBatch);
+                        break;
+                    }
+                }
+            }
+            // reduce product batch NOT check melt
+            {
+                var deficitBatches = productBatches.Where(pb => pb.auto_start == 1 && !pb.check_melt && pb.NotProvided > 0)
+                    .OrderBy(b => b.deadline).ThenByDescending(b => b.RequiredLen);
+                foreach (var productBatch in deficitBatches)
+                {
+                    var productMaterialBatches = materials[productBatch.product.material].Where(b => gteProductLen(b, productBatch))
+                        .OrderByDescending(b => b.NotReserved);
+                    ReduceProductBatchQuantity(productMaterialBatches, productBatch);
                 }
             }
             return reservesBag.ToArray();
+
+            void ReduceProductBatchQuantity(IEnumerable<Feedstock> feedstocks, Batch productBatch)
+            {
+                var feedstocksArray = feedstocks.ToArray();
+                if (feedstocksArray.Length > 0)
+                {
+                    productBatch.quantity = sumQnt(feedstocksArray, productBatch.product.len);
+                    ReserveMaterial(reservesBag, productBatch, feedstocksArray, materialMinLen);
+                }
+            }
         }
 
         private static void ReserveMaterial(ConcurrentBag<Reserve> reserves, Batch productBatch, IEnumerable<Feedstock> material, Dictionary<string, int> materialMinLen)
