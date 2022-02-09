@@ -84,12 +84,12 @@ namespace CuttingV2
             Test(productBatches, materialBatches, alts);
         }
 
-        public static Reserve[] CalcWithAlt(IEnumerable<Batch> productBatches, IEnumerable<Feedstock> materialBatches, Alt[] alts, Direction[] directions = null, Reserve[] reserveList = null)
+        public static Reserve[] CalcWithAlt(IEnumerable<Batch> productBatches, IEnumerable<Feedstock> materialBatches, Alt[] alts, Direction[] directions = null, IEnumerable<AltPath> altPaths = null)
         {
             var altMaterialIds = alts.Select(x => x.altMaterialId).Distinct();
             var materialMinLen = productBatches.GroupBy(b => b.product.material).ToDictionary(m => m.Key, m => m.Min(b => b.product.len));
-            if (reserveList == null) reserveList = new Reserve[] { };
-            ConcurrentBag<Reserve> reservesBag = new ConcurrentBag<Reserve>(reserveList);
+            //if (reserveList == null) reserveList = new Reserve[] { };
+            ConcurrentBag<Reserve> reservesBag = new ConcurrentBag<Reserve>();
             var materials = materialBatches.ToLookup(x => x.materialId);
 
             bool gteProductLen(Feedstock b, Batch productBatch) => b.NotReserved > productBatch.product.len || b.NotReserved == productBatch.product.billet_len;
@@ -116,14 +116,14 @@ namespace CuttingV2
                         .ThenByDescending(b => b.RequiredLen))
                             if (productBatch.NotProvided > 0)
                             {
-                                var material = materials[productBatch.product.material].Where(b => gteProductLen(b, productBatch));
-                                ReserveMaterial(reservesBag, productBatch, material, materialMinLen);
+                                var feedstocks = materials[productBatch.product.material].Where(b => gteProductLen(b, productBatch));
+                                ReserveMaterial(reservesBag, productBatch, feedstocks, materialMinLen);
                             }
                     });
                 },
                 () =>
                 {
-                    var altByOriginalAndProduct = alts.ToLookup(a => a.originalMatarialId + a.productId, a => a.altMaterialId);
+                    var altByOriginalAndProduct = alts.ToLookup(a => a.originalMatarialId + a.productId);
                     var prodBatches = productBatches.Where(pb => pb.NotProvided > 0);
                     foreach (var productBatch in prodBatches
                         .OrderByDescending(b => b.auto_start)
@@ -139,8 +139,9 @@ namespace CuttingV2
                         {
                             var altIds = altByOriginalAndProduct[productBatch.product.material + productBatch.product.id]
                                 .Concat(altByOriginalAndProduct[productBatch.product.material]);
-                            var material = altIds.SelectMany(altId => materials[altId].Where(b => gteProductLen(b, productBatch)));
-                            ReserveMaterial(reservesBag, productBatch, material, materialMinLen);
+                            var feedstocks = altIds.Select(a => a.altMaterialId).Distinct()
+                            .SelectMany(altMaterialId => materials[altMaterialId].Where(b => gteProductLen(b, productBatch)));
+                            ReserveMaterial(reservesBag, productBatch, feedstocks, materialMinLen);
                         }
                     }
                 }
@@ -187,6 +188,27 @@ namespace CuttingV2
                     ReduceProductBatchQuantity(productMaterialBatches, productBatch);
                 }
             }
+            if (altPaths != null)
+            {
+                var deficitBatches = productBatches.Where(pb => pb.auto_start == 1 && pb.check_melt && pb.NotProvided > 0)
+                    .OrderBy(b => b.deadline).ThenByDescending(b => b.RequiredLen);
+                var altPathsByProduct = altPaths.ToLookup(x => x.productId);
+                foreach (var productBatch in deficitBatches)
+                {
+                    var productAltPaths = altPathsByProduct[productBatch.product.id];
+                    foreach (var productAltPath in productAltPaths)
+                    {
+                        var productMaterialBatches = materials[productAltPath.altMaterialId].Where(b => gteProductLen(b, productBatch));
+                        foreach (var melt in productMaterialBatches.GroupBy(mb => mb.melt).OrderByDescending(melt => sumQnt(melt, productBatch.product.len)))
+                        {
+                            ReserveMaterial(reservesBag, productBatch, melt, materialMinLen);
+                            if (productBatch.NotProvided == 0)
+                                productBatch.pathId = productAltPath.altPath;
+                            break;
+                        }
+                    }
+                }
+            }
             return reservesBag.ToArray();
 
             void ReduceProductBatchQuantity(IEnumerable<Feedstock> feedstocks, Batch productBatch)
@@ -200,15 +222,15 @@ namespace CuttingV2
             }
         }
 
-        private static void ReserveMaterial(ConcurrentBag<Reserve> reserves, Batch productBatch, IEnumerable<Feedstock> material, Dictionary<string, int> materialMinLen)
+        private static void ReserveMaterial(ConcurrentBag<Reserve> reserves, Batch productBatch, IEnumerable<Feedstock> feedstocks, Dictionary<string, int> materialMinLen)
         {
-            var availabilities = material.ToLookup(m => 10 * m.availability + m.sub_level);
-            List<Feedstock> availBatches = new List<Feedstock>();
+            var availabilities = feedstocks.ToLookup(m => 10 * m.availability + m.sub_level);
+            List<Feedstock> availFeedstocks = new List<Feedstock>();
             foreach (var availability in availabilities.OrderBy(x => x.Key))
                 if (productBatch.NotProvided > 0)
                 {
-                    availBatches.AddRange(availability);
-                    ReserveCreate(reserves, productBatch, availBatches, materialMinLen);
+                    availFeedstocks.AddRange(availability);
+                    ReserveCreate(reserves, productBatch, availFeedstocks, materialMinLen);
                 }
                 else break;
         }
@@ -326,6 +348,13 @@ namespace CuttingV2
         public string altMaterialId;
         public string productId;
     }
+    public class AltPath
+    {
+        public string originalMatarialId;
+        public string altMaterialId;
+        public string productId;
+        public string altPath;
+    }
 
     // Material direction to product
     public class Direction
@@ -374,6 +403,7 @@ namespace CuttingV2
         public int RequiredLen => product.len * quantity;
         public int NotProvidedLen => product.len * NotProvided;
         public Batch sampleBatch;
+        public string pathId;
         public int Provided
         {
             get => provided;
