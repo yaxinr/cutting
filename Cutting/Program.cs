@@ -102,67 +102,42 @@ namespace CuttingV2
                         ReserveMaterial(reservesBag, productBatch, material, materialMinLen);
                     }
             }
-            Parallel.Invoke(
-                () =>
-                {
-                    var productMaterialIds = productBatches.ToLookup(pb => pb.product.material);
-                    Parallel.ForEach(materials.Select(x => x.Key).Except(altMaterialIds), materialId =>
-                    {
-                        var prodBatches = productMaterialIds[materialId];
-                        foreach (var productBatch in prodBatches
-                        .OrderByDescending(b => b.auto_start)
-                        .ThenBy(b => b.deadline)
-                        .ThenByDescending(b => b.batchId > 0).ThenBy(b => b.batchId)
-                        .ThenByDescending(b => b.RequiredLen))
-                            if (productBatch.NotProvided > 0)
-                            {
-                                var feedstocks = materials[productBatch.product.material].Where(b => gteProductLen(b, productBatch));
-                                ReserveMaterial(reservesBag, productBatch, feedstocks, materialMinLen);
-                            }
-                    });
-                },
-                () =>
-                {
-                    var altByOriginalAndProduct = alts.ToLookup(a => a.originalMatarialId + a.productId);
-                    var prodBatches = productBatches.Where(pb => pb.NotProvided > 0);
-                    foreach (var productBatch in prodBatches
-                        .OrderByDescending(b => b.auto_start)
-                        .ThenBy(b => b.deadline)
-                        .ThenByDescending(b => b.batchId > 0).ThenBy(b => b.batchId)
-                        .ThenByDescending(b => b.RequiredLen))
-                    {
-                        {
-                            var material = materials[productBatch.product.material].Where(b => gteProductLen(b, productBatch));
-                            ReserveMaterial(reservesBag, productBatch, material, materialMinLen);
-                        }
-                        if (productBatch.NotProvided > 0)
-                        {
-                            var altIds = altByOriginalAndProduct[productBatch.product.material + productBatch.product.id]
-                                .Concat(altByOriginalAndProduct[productBatch.product.material]);
-                            var feedstocks = altIds.Select(a => a.altMaterialId).Distinct()
-                            .SelectMany(altMaterialId => materials[altMaterialId].Where(b => gteProductLen(b, productBatch)));
-                            ReserveMaterial(reservesBag, productBatch, feedstocks, materialMinLen);
-                        }
-                    }
-                }
-            );
-            int sumQnt(IEnumerable<Feedstock> feedstocks, int len) => feedstocks.Sum(b => b.NotReserved / len);
-            // reduce check melt
+            var productMaterialIds = productBatches.ToLookup(pb => pb.product.material);
+            Parallel.ForEach(materials.Select(x => x.Key).Except(altMaterialIds), materialId =>
             {
-                var deficitBatches = productBatches.Where(pb => pb.AutoStart && pb.check_melt && pb.NotProvided > 0)
-                    .OrderBy(b => b.deadline).ThenByDescending(b => b.RequiredLen);
-                foreach (var productBatch in deficitBatches)
-                {
-                    var productMaterialBatches = materials[productBatch.product.material].Where(b => gteProductLen(b, productBatch));
-                    foreach (var melt in productMaterialBatches.GroupBy(mb => mb.melt).OrderByDescending(melt => sumQnt(melt, productBatch.product.len)))
+                var prodBatches = productMaterialIds[materialId];
+                foreach (var productBatch in prodBatches
+                .OrderByDescending(b => b.auto_start)
+                .ThenBy(b => b.deadline)
+                .ThenByDescending(b => b.batchId > 0).ThenBy(b => b.batchId)
+                .ThenByDescending(b => b.RequiredLen))
+                    if (productBatch.NotProvided > 0)
                     {
-                        var meltBatches = melt.ToArray();
-                        productBatch.quantity = sumQnt(meltBatches, productBatch.product.len);
-                        ReserveMaterial(reservesBag, productBatch, meltBatches, materialMinLen);
-                        break;
+                        var feedstocks = materials[productBatch.product.material].Where(b => gteProductLen(b, productBatch));
+                        ReserveMaterial(reservesBag, productBatch, feedstocks, materialMinLen);
                     }
+            });
+            var altByOriginalAndProduct = alts.ToLookup(a => a.originalMatarialId + a.productId);
+            foreach (var productBatch in productBatches.Where(pb => pb.NotProvided > 0)
+                .OrderByDescending(b => b.auto_start)
+                .ThenBy(b => b.deadline)
+                .ThenByDescending(b => b.batchId > 0).ThenBy(b => b.batchId)
+                .ThenByDescending(b => b.RequiredLen))
+            {
+                {
+                    var material = materials[productBatch.product.material].Where(b => gteProductLen(b, productBatch));
+                    ReserveMaterial(reservesBag, productBatch, material, materialMinLen);
+                }
+                if (productBatch.NotProvided > 0)
+                {
+                    var altIds = altByOriginalAndProduct[productBatch.product.material + productBatch.product.id]
+                        .Concat(altByOriginalAndProduct[productBatch.product.material]);
+                    var feedstocks = altIds.Select(a => a.altMaterialId).Distinct()
+                    .SelectMany(altMaterialId => materials[altMaterialId].Where(b => gteProductLen(b, productBatch)));
+                    ReserveMaterial(reservesBag, productBatch, feedstocks, materialMinLen);
                 }
             }
+            int sumQnt(IEnumerable<Feedstock> feedstocks, int len) => feedstocks.Sum(b => b.NotReserved / len);
             // reduce product batch check melt
             {
                 var deficitBatches = productBatches.Where(pb => pb.AutoStart && pb.check_melt && pb.NotProvided > 0)
@@ -216,7 +191,7 @@ namespace CuttingV2
                 var feedstocksArray = feedstocks.ToArray();
                 if (feedstocksArray.Length > 0)
                 {
-                    productBatch.quantity = sumQnt(feedstocksArray, productBatch.product.len);
+                    productBatch.quantity = Math.Min(productBatch.quantity, sumQnt(feedstocksArray, productBatch.product.len));
                     ReserveMaterial(reservesBag, productBatch, feedstocksArray, materialMinLen);
                 }
             }
@@ -423,8 +398,6 @@ namespace CuttingV2
             NotProvided = quantity;
             this.deadline = deadline ?? DateTime.MaxValue;
         }
-
-        public List<Reserve> Reserves;
     }
     public class Feedstock
     {
