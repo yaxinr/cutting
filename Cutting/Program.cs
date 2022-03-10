@@ -149,7 +149,7 @@ namespace CuttingV2
             int sumQnt(IEnumerable<Feedstock> feedstocks, int len) => feedstocks.Sum(b => b.NotReserved / len);
             // reduce check melt
             {
-                var deficitBatches = productBatches.Where(pb => pb.auto_start == 1 && pb.check_melt && pb.NotProvided > 0)
+                var deficitBatches = productBatches.Where(pb => pb.AutoStart && pb.check_melt && pb.NotProvided > 0)
                     .OrderBy(b => b.deadline).ThenByDescending(b => b.RequiredLen);
                 foreach (var productBatch in deficitBatches)
                 {
@@ -165,7 +165,7 @@ namespace CuttingV2
             }
             // reduce product batch check melt
             {
-                var deficitBatches = productBatches.Where(pb => pb.auto_start == 1 && pb.check_melt && pb.NotProvided > 0)
+                var deficitBatches = productBatches.Where(pb => pb.AutoStart && pb.check_melt && pb.NotProvided > 0)
                     .OrderBy(b => b.deadline).ThenByDescending(b => b.RequiredLen);
                 foreach (var productBatch in deficitBatches)
                 {
@@ -179,7 +179,7 @@ namespace CuttingV2
             }
             // reduce product batch NOT check melt
             {
-                var deficitBatches = productBatches.Where(pb => pb.auto_start == 1 && !pb.check_melt && pb.NotProvided > 0)
+                var deficitBatches = productBatches.Where(pb => pb.AutoStart && !pb.check_melt && pb.NotProvided > 0)
                     .OrderBy(b => b.deadline).ThenByDescending(b => b.RequiredLen);
                 foreach (var productBatch in deficitBatches)
                 {
@@ -190,7 +190,7 @@ namespace CuttingV2
             }
             if (altPaths != null)
             {
-                var deficitBatches = productBatches.Where(pb => pb.auto_start == 1 && pb.check_melt && pb.NotProvided > 0)
+                var deficitBatches = productBatches.Where(pb => pb.AutoStart && pb.check_melt && pb.NotProvided > 0)
                     .OrderBy(b => b.deadline).ThenByDescending(b => b.RequiredLen);
                 var altPathsByProduct = altPaths.ToLookup(x => x.productId);
                 foreach (var productBatch in deficitBatches)
@@ -396,6 +396,7 @@ namespace CuttingV2
         public int quantity;
         public DateTime deadline = DateTime.MaxValue;
         public int auto_start;
+        public bool AutoStart => auto_start == 1 && batchId == 0;
         private int provided;
         public bool check_melt = true;
         public int NotProvided { get; private set; }
