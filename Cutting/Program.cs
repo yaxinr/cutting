@@ -289,7 +289,6 @@ namespace CuttingV2
         public static bool CheckMelt(IEnumerable<Feedstock> materialBatches, int required, Product product, Batch sampleBatch)
         {
             var notReservedArr = materialBatches.Select(x => x.NotReserved).ToArray();
-            int sampleRequired = sampleBatch == null ? 0 : sampleBatch.quantity;
             if (!CheckArr(notReservedArr, required, product.len, product.billet_len)) return false;
             if (sampleBatch != null && !CheckArr(notReservedArr, sampleBatch.quantity, sampleBatch.product.len, sampleBatch.product.billet_len)) return false;
             return true;
@@ -299,14 +298,15 @@ namespace CuttingV2
         {
             for (int i = 0; i < notReservedArr.Length; i++)
             {
-                if (billetLen > 0 && billetLen == notReservedArr[i])
+                int notReserved = notReservedArr[i];
+                if (billetLen > 0 && billetLen == notReserved)
                 {
                     notReservedArr[i] = 0;
                     required--;
                 }
                 else
                 {
-                    int qnt = notReservedArr[i] / len;
+                    int qnt = Math.Min(notReserved / len, required);
                     notReservedArr[i] -= qnt * len;
                     required -= qnt;
                 }
