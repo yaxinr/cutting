@@ -5,11 +5,6 @@ VisualStudioVersion = 17.0.32014.148
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Cutting", "Cutting\Cutting.csproj", "{8A634D9D-749A-46FF-B317-2C841E48208D}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CuttingTests", "CuttingTests\CuttingTests.csproj", "{63645B0E-18DC-4EEE-9D46-93D257F55F2A}"
-	ProjectSection(ProjectDependencies) = postProject
-		{8A634D9D-749A-46FF-B317-2C841E48208D} = {8A634D9D-749A-46FF-B317-2C841E48208D}
-	EndProjectSection
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CuttingTest462", "CuttingTest462\CuttingTest462.csproj", "{9A1DC3B5-199A-4829-B255-E9330E2E4F95}"
 EndProject
 Global
@@ -22,10 +17,6 @@ Global
 		{8A634D9D-749A-46FF-B317-2C841E48208D}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{8A634D9D-749A-46FF-B317-2C841E48208D}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{8A634D9D-749A-46FF-B317-2C841E48208D}.Release|Any CPU.Build.0 = Release|Any CPU
-		{63645B0E-18DC-4EEE-9D46-93D257F55F2A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{63645B0E-18DC-4EEE-9D46-93D257F55F2A}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{63645B0E-18DC-4EEE-9D46-93D257F55F2A}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{63645B0E-18DC-4EEE-9D46-93D257F55F2A}.Release|Any CPU.Build.0 = Release|Any CPU
 		{9A1DC3B5-199A-4829-B255-E9330E2E4F95}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{9A1DC3B5-199A-4829-B255-E9330E2E4F95}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{9A1DC3B5-199A-4829-B255-E9330E2E4F95}.Release|Any CPU.ActiveCfg = Release|Any CPU
