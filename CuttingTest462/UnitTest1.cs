@@ -25,7 +25,8 @@ namespace CuttingTest462
             Alt[] alts = Array.Empty<Alt>();
             //Test(productBatches, materialBatches, alts);
             var reserves = Program.CalcWithAlt(productBatches, materialBatches, alts);
-            Assert.IsTrue(productBatch1.quantity == 2);
+            Assert.IsTrue(productBatch1.quantity == 6);
+            Assert.IsTrue(productBatch1.feasibleQuantity == 2);
         }
         [TestMethod]
         public void TestMethod2()
@@ -60,7 +61,7 @@ namespace CuttingTest462
             };
             //Test(productBatches, materialBatches, alts);
             var reserves = Program.CalcWithAlt(productBatches, materialBatches, alts);
-            Assert.IsTrue(productBatch1.NotProvided == 0, "test failed");
+            Assert.IsTrue(productBatch1.IsProvided, "test failed");
         }
         [TestMethod]
         public void TestMethodSample1()
@@ -94,7 +95,7 @@ namespace CuttingTest462
             };
             //Test(productBatches, materialBatches, alts);
             var reserves = Program.CalcWithAlt(productBatches, materialBatches, alts);
-            Assert.IsTrue(productBatch1.NotProvided == 0, "test failed");
+            Assert.IsTrue(productBatch1.IsProvided, "test failed");
         }
         [TestMethod]
         public void TestMethod3()
@@ -151,7 +152,7 @@ namespace CuttingTest462
             //Test(productBatches, materialBatches, alts);
             var reserves = Program.CalcWithAlt(productBatches, materialBatches, alts);
             Assert.IsTrue(reserves.Any(r => r.productBatch == productBatch1 && r.materialBatch == materialBatch1));
-            Assert.IsTrue(productBatch2.NotProvided == 0);
+            Assert.IsTrue(productBatch2.IsProvided);
         }
         [TestMethod]
         public void TestReduceBatchQuantity()
@@ -178,8 +179,9 @@ namespace CuttingTest462
             //Test(productBatches, materialBatches, alts);
             var reserves = Program.CalcWithAlt(productBatches, materialBatches, alts);
             Assert.IsTrue(reserves.Any(r => r.productBatch == productBatch1 && r.materialBatch == materialBatch1));
-            Assert.IsTrue(productBatch1.quantity == 2);
-            Assert.IsTrue(productBatch1.NotProvided == 0);
+            Assert.IsTrue(productBatch1.quantity == 3);
+            Assert.IsTrue(productBatch1.feasibleQuantity == 2);
+            Assert.IsTrue(productBatch1.IsProvided);
         }
     }
 }
