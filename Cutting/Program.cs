@@ -192,7 +192,7 @@ namespace CuttingV2
                     ReserveCreate(reserves, productBatch, availFeedstocks, materialMinLen);
                 }
                 else break;
-            if (!productBatch.IsProvided)
+            if (!productBatch.IsProvided && productBatch.AutoStart)
             {
                 if (productBatch.check_melt)
                     foreach (var melt in feedstocks.GroupBy(mb => mb.melt).OrderByDescending(melt => melt.Sum(x => x.NotReserved)))
