@@ -145,7 +145,7 @@ namespace CuttingV2
                 foreach (var productBatch in deficitBatches)
                 {
                     var productAltPaths = altPathsByProduct[productBatch.product.id];
-                    foreach (var productAltPath in productAltPaths)
+                    foreach (var productAltPath in productAltPaths.OrderByDescending(x => x.gravity))
                     {
                         var productMaterialBatches = materials[productAltPath.altMaterialId].Where(feedstock => gteProductLen(feedstock, productBatch));
                         if (productBatch.check_melt)
@@ -153,20 +153,26 @@ namespace CuttingV2
                             {
                                 ReserveMaterial(reservesBag, productBatch, feedstocks, materialMinLen);
                                 if (productBatch.IsProvided)
+                                {
                                     productBatch.pathId = productAltPath.altPath;
+                                    break;
+                                }
                             }
                         else
                         {
                             var feedstocks = materials[productAltPath.altMaterialId].Where(feedstock => gteProductLen(feedstock, productBatch));
                             ReserveMaterial(reservesBag, productBatch, feedstocks, materialMinLen);
                             if (productBatch.IsProvided)
+                            {
                                 productBatch.pathId = productAltPath.altPath;
+                            }
                         }
+                        if (productBatch.IsProvided)
+                            break;
                     }
                 }
             }
             return reservesBag.ToArray();
-
         }
         private static void ReserveMaterial(ConcurrentBag<Reserve> reserves, Batch productBatch, IEnumerable<Feedstock> feedstocks, Dictionary<string, int> materialMinLen)
         {
@@ -325,6 +331,7 @@ namespace CuttingV2
         public string altMaterialId;
         public string productId;
         public string altPath;
+        public int gravity;
     }
 
     // Material direction to product

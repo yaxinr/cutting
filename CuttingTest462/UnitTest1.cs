@@ -183,5 +183,46 @@ namespace CuttingTest462
             Assert.IsTrue(productBatch1.feasibleQuantity == 2);
             Assert.IsTrue(productBatch1.IsProvided);
         }
+        [TestMethod]
+        public void TestAltPath()
+        {
+            var material1 = "1";
+            string material2 = "alt mat";
+            var materialBatch1 = new Feedstock("te1", material2, 4, 0, "plavka1");
+            //var materialBatch2 = new Feedstock("te2", material1, 1, 0, "plavka1");
+            //var materialBatch3 = new Feedstock("te2", material1, 1, 0, "plavka1", 2);
+
+            var materialBatches = new Feedstock[] { materialBatch1
+                //, materialBatch2, materialBatch3
+                };
+
+            //var materialDet = material1;
+            var product1 = new Product("det1", "path1", 2, 1, material1);
+            var productBatch1 = new Batch("batch1", product1, 5, new DateTime(2000, 01, 01)) { auto_start = 1 };
+
+            //var product2 = new Product("det2", "path1", 1, 1, material1);
+            //var productBatch2 = new Batch("batch21", product2, 1, new DateTime(2001, 01, 01)) { auto_start = 1 };
+
+            IEnumerable<Batch> productBatches = new Batch[] { productBatch1 };
+            Alt[] alts = new Alt[] {
+            //    new Alt{ productId = product1.id, originalMatarialId = product1.material, altMaterialId = materialAlt1  },
+            //    new Alt{ productId = product2.id, originalMatarialId = product2.material, altMaterialId = materialAlt1  },
+            };
+            string altPath1 = "altPath1";
+            string altPath2 = "altPath2";
+            AltPath[] altPaths = new AltPath[]
+            {
+                new AltPath(){ productId = productBatch1.product.id, originalMatarialId = productBatch1.product.material, altMaterialId = material2, altPath = altPath1, gravity=2},
+                new AltPath(){ productId = productBatch1.product.id, originalMatarialId = productBatch1.product.material, altMaterialId = material2, altPath = altPath2, gravity=1},
+            };
+            //Test(productBatches, materialBatches, alts);
+            var reserves = Program.CalcWithAlt(productBatches, materialBatches, alts, null, altPaths);
+            Assert.IsTrue(reserves.Any(r => r.productBatch == productBatch1 && r.materialBatch == materialBatch1));
+            Assert.AreEqual(5, productBatch1.quantity);
+            Assert.AreEqual(2, productBatch1.feasibleQuantity);
+            Assert.IsTrue(productBatch1.IsProvided);
+            Assert.AreEqual(altPaths.First().altPath, productBatch1.pathId);
+            //Assert.AreEqual("path1", productBatch1.pathId);
+        }
     }
 }
