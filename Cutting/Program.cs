@@ -84,8 +84,9 @@ namespace CuttingV2
             Test(productBatches, materialBatches, alts);
         }
 
-        public static Reserve[] CalcWithAlt(IEnumerable<Batch> productBatches, IEnumerable<Feedstock> materialBatches, Alt[] alts, Direction[] directions = null, IEnumerable<AltPath> altPaths = null)
+        public static Reserve[] CalcWithAlt(IEnumerable<Batch> productBatches, IEnumerable<Feedstock> materialBatches, Alt[] alts = null, Direction[] directions = null, IEnumerable<AltPath> altPaths = null)
         {
+            if (alts == null) alts = new Alt[0];
             var altMaterialIds = alts.Select(x => x.altMaterialId).Distinct();
             var materialMinLen = productBatches.GroupBy(b => b.product.material).ToDictionary(m => m.Key, m => m.Min(b => b.product.len));
             //if (reserveList == null) reserveList = new Reserve[] { };
@@ -225,7 +226,9 @@ namespace CuttingV2
                     .Where(materialBatch => materialBatch.NotReserved >= productBatch.product.billet_len)
                     .OrderBy(batchOrder);
                 ProdBatchReserve(reserves, productBatch, orderedByWaste);
-                ProdBatchReserve(reserves, productBatch.sampleBatch, meltFeedstocks.OrderBy(b => b.NotReserved));
+                if (productBatch.SampleBatches != null)
+                    foreach (var sampleBatch in productBatch.SampleBatches)
+                        ProdBatchReserve(reserves, sampleBatch, meltFeedstocks.OrderBy(b => b.NotReserved));
                 break;
             }
 
@@ -346,7 +349,6 @@ namespace CuttingV2
         public Batch productBatch;
         public Feedstock materialBatch;
         public readonly int productQuantity;
-
         public Reserve(Batch productBatch, Feedstock materialBatch, int productQnt = 0)
         {
             this.productBatch = productBatch;
@@ -375,6 +377,7 @@ namespace CuttingV2
         public int feasibleQuantity;
         public DateTime deadline = DateTime.MaxValue;
         public int auto_start;
+        public int tare_kind;
         public bool AutoStart => auto_start == 1 && batchId == 0;
         private int provided;
         public bool check_melt = true;
@@ -384,16 +387,14 @@ namespace CuttingV2
         public int RequiredLen => product.len * feasibleQuantity;
         public int NotProvidedLen => product.len * NotProvided;
         public Batch sampleBatch;
+        public Batch[] SampleBatches;
         public string pathId;
         public int Provided
         {
             get => provided;
-            set
-            {
-                provided = value;
-            }
+            set => provided = value;
         }
-        public Batch(string id, Product product, int quantity = 0, DateTime? deadline = null)
+        public Batch(string id, Product product, int quantity, DateTime? deadline = null)
         {
             this.id = id;
             this.product = product;
@@ -406,7 +407,10 @@ namespace CuttingV2
         {
             int required = this.feasibleQuantity;
             var notReservedArr = feedstocks.Select(x => x.NotReserved).ToArray();
-            if (sampleBatch != null && GetResidual(sampleBatch.quantity, sampleBatch.product.len, sampleBatch.product.billet_len) > 0) return required;
+            if (SampleBatches != null)
+                foreach (var sampleBatch in SampleBatches)
+                    if (GetResidual(sampleBatch.quantity, sampleBatch.product.len, sampleBatch.product.billet_len) > 0)
+                        return required;
             int residual = GetResidual(required, product.len, product.billet_len);
             if (residual > 0) return residual;
             return 0;
@@ -432,7 +436,6 @@ namespace CuttingV2
                 return req;
             }
         }
-
     }
     public class Feedstock
     {

@@ -224,5 +224,35 @@ namespace CuttingTest462
             Assert.AreEqual(altPaths.First().altPath, productBatch1.pathId);
             //Assert.AreEqual("path1", productBatch1.pathId);
         }
+        [TestMethod]
+        public void TestBillet()
+        {
+            var material1 = "1";
+            var materialBatch1 = new Feedstock("te1", material1, 194, 0, "plavka1");
+            var materialBatch2 = new Feedstock("te2", material1, 125, 0, "plavka2");
+            var materialBatch3 = new Feedstock("te2", material1, 45, 0, "plavka2");
+
+            var materialBatches = new Feedstock[] { materialBatch2
+                , materialBatch1
+                , materialBatch3 };
+
+            //var materialDet = material1;
+            var product1 = new Product("det1", "path1", 189, 1, material1) { billet_len = 187 };
+            var productBatch1 = new Batch("batch1", product1, 1, new DateTime(2020, 10, 10)) { auto_start = 1, check_melt = true, };
+
+            var product2 = new Product("det2", "path2", 87, 1, material1) { billet_len = 85 };
+            var productBatch2 = new Batch("batch2", product2, 1, new DateTime(2000, 1, 1)) { auto_start = 0, check_melt = false };
+
+            IEnumerable<Batch> productBatches = new Batch[] { productBatch1, productBatch2 };
+            //Test(productBatches, materialBatches, alts);
+            var reserves = Program.CalcWithAlt(productBatches, materialBatches);
+            Assert.IsTrue(reserves.Any(r => r.productBatch == productBatch1 && r.materialBatch == materialBatch1));
+            //Assert.AreEqual(0, productBatch1.RequiredLen);
+            //Assert.AreEqual(2, productBatch1.feasibleQuantity);
+            Assert.AreEqual(1, productBatch1.Provided);
+            Assert.IsTrue(productBatch1.IsProvided);
+            //Assert.AreEqual(altPaths.First().altPath, productBatch1.pathId);
+            //Assert.AreEqual("path1", productBatch1.pathId);
+        }
     }
 }
