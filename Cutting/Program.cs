@@ -36,7 +36,7 @@ namespace CuttingV2
 
             var product = new Product("det2", "path1", 20, 1, materialId1);
             var productBatchSample = new Batch("batchSample", product, 5);
-            var productBatch2 = new Batch("batch2", product, 3) { sampleBatch = productBatchSample };
+            var productBatch2 = new Batch("batch2", product, 3) { SampleBatches = new Batch[] { productBatchSample } };
             var product3 = new Product("det3", "path3", 10, 20, "2");
             var productBatch3 = new Batch("batch3", product3, 3);
 
@@ -93,13 +93,12 @@ namespace CuttingV2
             ConcurrentBag<Reserve> reservesBag = new ConcurrentBag<Reserve>();
             var materials = materialBatches.ToLookup(x => x.materialId);
 
-            bool gteProductLen(Feedstock b, Batch productBatch) => b.NotReserved > productBatch.product.len || b.NotReserved == productBatch.product.billet_len;
             if (directions != null)
             {
                 foreach (var productBatch in productBatches.OrderBy(b => b.deadline).ThenByDescending(b => b.RequiredLen))
                     foreach (var direction in directions.Where(direction => productBatch.product.path.ToUpper().StartsWith(direction.pathTemplate.ToUpper())))
                     {
-                        var material = materials[direction.materialId].Where(b => gteProductLen(b, productBatch));
+                        var material = materials[direction.materialId].Where(b => b.CanReserve(productBatch));
                         ReserveMaterial(reservesBag, productBatch, material, materialMinLen);
                     }
             }
@@ -114,19 +113,21 @@ namespace CuttingV2
                 .ThenByDescending(b => b.RequiredLen))
                     if (!productBatch.IsProvided)
                     {
-                        var feedstocks = materials[productBatch.product.material].Where(b => gteProductLen(b, productBatch));
+                        var feedstocks = materials[productBatch.product.material].Where(b => b.CanReserve(productBatch));
                         ReserveMaterial(reservesBag, productBatch, feedstocks, materialMinLen);
                     }
             });
             var altByOriginalAndProduct = alts.ToLookup(a => a.originalMatarialId + a.productId);
             foreach (var productBatch in productBatches.Where(pb => !pb.IsProvided)
                 .OrderByDescending(b => b.auto_start)
+                .ThenByDescending(b => b.batchId > 0)
                 .ThenBy(b => b.deadline)
-                .ThenByDescending(b => b.batchId > 0).ThenBy(b => b.batchId)
-                .ThenByDescending(b => b.RequiredLen))
+                .ThenByDescending(b => b.RequiredLen)
+                .ThenBy(b => b.batchId)
+                )
             {
                 {
-                    var material = materials[productBatch.product.material].Where(b => gteProductLen(b, productBatch));
+                    var material = materials[productBatch.product.material].Where(b => b.CanReserve(productBatch));
                     ReserveMaterial(reservesBag, productBatch, material, materialMinLen);
                 }
                 if (!productBatch.IsProvided)
@@ -134,62 +135,34 @@ namespace CuttingV2
                     var altIds = altByOriginalAndProduct[productBatch.product.material + productBatch.product.id]
                         .Concat(altByOriginalAndProduct[productBatch.product.material]);
                     var feedstocks = altIds.Select(a => a.altMaterialId).Distinct()
-                    .SelectMany(altMaterialId => materials[altMaterialId].Where(b => gteProductLen(b, productBatch)));
+                        .SelectMany(altMaterialId => materials[altMaterialId].Where(b => b.CanReserve(productBatch)));
                     ReserveMaterial(reservesBag, productBatch, feedstocks, materialMinLen);
                 }
             }
-            if (altPaths != null)
-            {
-                var altPathsByProduct = altPaths.ToLookup(x => x.productId);
-                var deficitBatches = productBatches.Where(pb => pb.AutoStart && !pb.IsProvided)
-                    .OrderBy(b => b.deadline).ThenByDescending(b => b.RequiredLen);
-                foreach (var productBatch in deficitBatches)
-                {
-                    var productAltPaths = altPathsByProduct[productBatch.product.id];
-                    foreach (var productAltPath in productAltPaths.OrderByDescending(x => x.gravity))
-                    {
-                        var productMaterialBatches = materials[productAltPath.altMaterialId].Where(feedstock => gteProductLen(feedstock, productBatch));
-                        if (productBatch.check_melt)
-                            foreach (var feedstocks in productMaterialBatches.GroupBy(mb => mb.melt).OrderBy(melt => melt.Sum(x => x.NotReserved)))
-                            {
-                                ReserveMaterial(reservesBag, productBatch, feedstocks, materialMinLen);
-                                if (productBatch.IsProvided)
-                                {
-                                    productBatch.pathId = productAltPath.altPath;
-                                    break;
-                                }
-                            }
-                        else
-                        {
-                            var feedstocks = materials[productAltPath.altMaterialId].Where(feedstock => gteProductLen(feedstock, productBatch));
-                            ReserveMaterial(reservesBag, productBatch, feedstocks, materialMinLen);
-                            if (productBatch.IsProvided)
-                            {
-                                productBatch.pathId = productAltPath.altPath;
-                            }
-                        }
-                        if (productBatch.IsProvided)
-                            break;
-                    }
-                }
-            }
+            //if (altPaths != null)
+            //{
+            //    var altPathsByProduct = altPaths.ToLookup(x => x.productId);
+            //    var deficitBatches = productBatches.Where(pb => pb.AutoStart && !pb.IsProvided)
+            //        .OrderBy(b => b.deadline).ThenByDescending(b => b.RequiredLen);
+            //    foreach (var productBatch in deficitBatches)
+            //    {
+            //        var productAltPaths = altPathsByProduct[productBatch.product.id];
+            //        foreach (var productAltPath in productAltPaths.OrderByDescending(x => x.gravity))
+            //        {
+            //            var feedstocks = materials[productAltPath.altMaterialId].Where(feedstock => feedstock.CanReserve(productBatch));
+            //            ReserveMaterial(reservesBag, productBatch, feedstocks, materialMinLen);
+            //            if (productBatch.IsProvided)
+            //            {
+            //                productBatch.pathId = productAltPath.altPath;
+            //                break;
+            //            }
+            //        }
+            //    }
+            //}
             return reservesBag.ToArray();
         }
         private static void ReserveMaterial(ConcurrentBag<Reserve> reserves, Batch productBatch, IEnumerable<Feedstock> feedstocks, Dictionary<string, int> materialMinLen)
         {
-            void ReduceProductBatchQuantity(IEnumerable<Feedstock> availableFeedstocks)
-            {
-                var feedstocksArray = availableFeedstocks.ToArray();
-                if (feedstocksArray.Length > 0)
-                {
-                    int residualQuantity = productBatch.ResidualQuantityFromFeedstocks(feedstocksArray);
-                    if (residualQuantity > 0)
-                    {
-                        productBatch.feasibleQuantity -= residualQuantity;
-                        ReserveMaterial(reserves, productBatch, feedstocksArray, materialMinLen);
-                    }
-                }
-            }
             var availabilities = feedstocks.ToLookup(m => 10 * m.availability + m.sub_level);
             List<Feedstock> availFeedstocks = new List<Feedstock>();
             foreach (var availability in availabilities.OrderBy(x => x.Key))
@@ -210,12 +183,25 @@ namespace CuttingV2
                 else
                     ReduceProductBatchQuantity(feedstocks.OrderByDescending(b => b.NotReserved));
             }
+            void ReduceProductBatchQuantity(IEnumerable<Feedstock> availableFeedstocks)
+            {
+                var feedstocksArray = availableFeedstocks.ToArray();
+                if (feedstocksArray.Length > 0)
+                {
+                    int residualQuantity = productBatch.ResidualQuantityFromFeedstocks(feedstocksArray);
+                    if (residualQuantity > 0)
+                    {
+                        productBatch.feasibleQuantity -= residualQuantity;
+                        ReserveMaterial(reserves, productBatch, feedstocksArray, materialMinLen);
+                    }
+                }
+            }
         }
 
         private static void ReserveCreate(ConcurrentBag<Reserve> reserves, Batch productBatch, IEnumerable<Feedstock> feedstocks, Dictionary<string, int> materialMinLen)
         {
             var melts = feedstocks.ToLookup(x => productBatch.check_melt ? x.melt : string.Empty);
-            int batchOrder(Feedstock b) => BatchWaste(b.NotReserved);
+            int batchOrder(Feedstock b) => productBatch.Waste(b.NotReserved);
             foreach (var meltFeedstocks in melts
                 .Where(meltFeedstocks => productBatch.ResidualQuantityFromFeedstocks(meltFeedstocks) == 0)
                 .OrderBy(meltFeedstocks => WasteSum(meltFeedstocks, productBatch.feasibleQuantity, productBatch.product.len))
@@ -247,14 +233,6 @@ namespace CuttingV2
                         return notReservedArr.Sum();
                 }
                 return int.MaxValue;
-            }
-
-            int BatchWaste(int free)
-            {
-                return free
-                    - (free >= productBatch.NotProvidedLen
-                    ? productBatch.NotProvidedLen
-                    : Math.Min(productBatch.NotProvided, free / productBatch.product.len) * productBatch.product.len);
             }
         }
 
@@ -382,7 +360,7 @@ namespace CuttingV2
         private int provided;
         public bool check_melt = true;
         public int NotProvided => feasibleQuantity - provided;
-        public bool IsProvided => feasibleQuantity == provided;
+        public bool IsProvided => feasibleQuantity <= provided;
         public int Seconds => product.seconds * product.pieces * feasibleQuantity;
         public int RequiredLen => product.len * feasibleQuantity;
         public int NotProvidedLen => product.len * NotProvided;
@@ -405,7 +383,7 @@ namespace CuttingV2
         }
         public int ResidualQuantityFromFeedstocks(IEnumerable<Feedstock> feedstocks)
         {
-            int required = this.feasibleQuantity;
+            int required = feasibleQuantity;
             var notReservedArr = feedstocks.Select(x => x.NotReserved).ToArray();
             if (SampleBatches != null)
                 foreach (var sampleBatch in SampleBatches)
@@ -436,6 +414,10 @@ namespace CuttingV2
                 return req;
             }
         }
+        public int Waste(int free) => free
+                - (free >= NotProvidedLen
+                ? NotProvidedLen
+                : Math.Min(NotProvided, free / product.len) * product.len);
     }
     public class Feedstock
     {
@@ -474,6 +456,7 @@ namespace CuttingV2
             this.location_id = location_id;
             this.availability = availability;
         }
+        public bool CanReserve(Batch productBatch) => NotReserved > productBatch.product.len || NotReserved == productBatch.product.billet_len;
     }
 
     public class Product
