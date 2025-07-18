@@ -107,8 +107,8 @@ namespace CuttingV2
             {
                 var prodBatches = productMaterialIds[materialId];
                 foreach (var productBatch in prodBatches
-                .OrderByDescending(b => b.auto_start)
-                .ThenBy(b => b.deadline)
+                //.OrderByDescending(b => b.auto_start)
+                .OrderBy(b => b.deadline)
                 .ThenByDescending(b => b.batchId > 0).ThenBy(b => b.batchId)
                 .ThenByDescending(b => b.RequiredLen))
                     if (!productBatch.IsProvided)
@@ -119,8 +119,8 @@ namespace CuttingV2
             });
             var altByOriginalAndProduct = alts.ToLookup(a => a.originalMatarialId + a.productId);
             foreach (var productBatch in productBatches.Where(pb => !pb.IsProvided)
-                .OrderByDescending(b => b.auto_start)
-                .ThenByDescending(b => b.batchId > 0)
+                //.OrderByDescending(b => b.auto_start)
+                .OrderByDescending(b => b.batchId > 0)
                 .ThenBy(b => b.deadline)
                 .ThenByDescending(b => b.RequiredLen)
                 .ThenBy(b => b.batchId)
